@@ -1,10 +1,11 @@
-package main
+package kv_storage
 
 import (
 	"context"
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 )
 
 type KVStorage interface {
@@ -21,10 +22,11 @@ type Storage struct { // implements KVStorage
 func (storage *Storage) Get(ctx context.Context, key string) (interface{}, error) {
 	storage.lock.RLock()
 	defer storage.lock.RUnlock()
-	if val, ok := storage.items[key]; ok {
-		return val, nil
+	val, ok := storage.items[key]
+	if !ok {
+		return nil, errors.New("No such key")
 	}
-	return nil, errors.New("No such key")
+	return val, nil
 }
 
 func (storage *Storage) Put(ctx context.Context, key string, val interface{}) error {
@@ -44,18 +46,28 @@ func (storage *Storage) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
-func main() {
+func Run() {
 	ctx := context.Background()
 	storage := Storage{
 		make(map[string]interface{}),
 		sync.RWMutex{},
 	}
-	if err := storage.Put(ctx, "1", 1); err != nil {
-		fmt.Printf("Put error")
-	}
-	if val, err := storage.Get(ctx, "1"); err != nil {
-		fmt.Printf("not key in storage")
-	} else {
-		fmt.Printf("%d", val)
-	}
+	go func() {
+		for i := 0; i < 100; i++ {
+			go storage.Put(ctx, fmt.Sprint(i), i)
+		}
+	}()
+	go func() {
+		for i := 0; i < 100; i++ {
+			go func(i int) {
+				val, err := storage.Get(ctx, fmt.Sprint(i))
+				if err != nil {
+					fmt.Println(err)
+					return
+				}
+				fmt.Println(val)
+			}(i)
+		}
+	}()
+	time.Sleep(time.Second * 3)
 }
